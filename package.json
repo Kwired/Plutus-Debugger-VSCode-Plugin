@@ -1,8 +1,8 @@
 {
   "name": "plutus-debugger",
-  "displayName": "plutus-debugger",
-  "description": "plutus-debugger extension",
-  "version": "0.0.1",
+  "displayName": "Plutus Debugger",
+  "description": "A VS Code extension for debugging and simulating Plutus smart contracts on Cardano.",
+  "version": "0.2.0",
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -19,6 +19,11 @@
   ],
   "publisher": "kwired",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kwired/Plutus-Debugger-VSCode-Plugin"
+  },
+  "homepage": "https://github.com/Kwired/Plutus-Debugger-VSCode-Plugin/blob/main/README.md",
   "categories": [
     "Debuggers"
   ],
