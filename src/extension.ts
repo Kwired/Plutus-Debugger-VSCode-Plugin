@@ -15,7 +15,56 @@ export async function activate(context: vscode.ExtensionContext) {
   // config_disposal(context);
   console.log("🔥 Plutus Debugger extension ACTIVATED");
 
+  const surveyCompleted = context.globalState.get<boolean>("plutusDebugger.surveyCompleted");
+  if (!surveyCompleted) {
+    const promptSurvey = () => {
+      vscode.window.showInformationMessage(
+        "Take a 1-min survey to help us improve Plutus Simulator 🎉",
+        "Take 1-min Survey",
+        "Already Done"
+      ).then(selection => {
+        if (selection === "Take 1-min Survey") {
+          vscode.env.openExternal(vscode.Uri.parse("https://forms.gle/UJU6zoC6yeSAvy3g7"));
+          context.globalState.update("plutusDebugger.surveyCompleted", true);
+        } else if (selection === "Already Done") {
+          context.globalState.update("plutusDebugger.surveyCompleted", true);
+        }
+      });
+    };
 
+    const hasShownInstallMessage = context.globalState.get<boolean>("plutusDebugger.hasShownInstallMessage");
+    if (!hasShownInstallMessage) {
+      vscode.window.showInformationMessage(
+        "Plutus Simulator installed successfully 🎉",
+        "Take 1-min Survey"
+      ).then(selection => {
+        if (selection === "Take 1-min Survey") {
+          vscode.env.openExternal(vscode.Uri.parse("https://forms.gle/UJU6zoC6yeSAvy3g7"));
+          context.globalState.update("plutusDebugger.surveyCompleted", true);
+        }
+      });
+      context.globalState.update("plutusDebugger.hasShownInstallMessage", true);
+      context.globalState.update("plutusDebugger.lastSurveyPromptTime", Date.now());
+    } else {
+      const lastPromptTime = context.globalState.get<number>("plutusDebugger.lastSurveyPromptTime") || 0;
+      const oneHour = 60 * 60 * 1000;
+      if (Date.now() - lastPromptTime >= oneHour) {
+        promptSurvey();
+        context.globalState.update("plutusDebugger.lastSurveyPromptTime", Date.now());
+      }
+    }
+
+    const intervalId = setInterval(() => {
+      if (!context.globalState.get<boolean>("plutusDebugger.surveyCompleted")) {
+        promptSurvey();
+        context.globalState.update("plutusDebugger.lastSurveyPromptTime", Date.now());
+      } else {
+        clearInterval(intervalId);
+      }
+    }, 60 * 60 * 1000);
+
+    context.subscriptions.push({ dispose: () => clearInterval(intervalId) });
+  }
   const platform = os.platform();
   const scriptName =
     platform === "win32" ? "check-ghcid.bat" : "check-ghcid.sh";

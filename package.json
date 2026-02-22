@@ -2,7 +2,7 @@
   "name": "plutus-debugger",
   "displayName": "Plutus Debugger",
   "description": "A VS Code extension for debugging and simulating Plutus smart contracts on Cardano.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "engines": {
     "vscode": "^1.96.0"
   },
