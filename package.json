@@ -131,9 +131,9 @@
         "title": "Hello World"
       },
       {
-        "command": "plutus_debuggerDebugger.getUtxoDetails",
+        "command": "plutusDebugger.getUtxoDetails",
         "title": "Get latest UTXO Details",
-        "category": "plutus_debugger"
+        "category": "Plutus Debugger"
       },
       {
         "command": "plutusDebugger.simulatePlutus",

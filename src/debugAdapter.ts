@@ -134,14 +134,14 @@ export class HaskellDebugSession extends DebugSession {
       for (const line of lines) {
         const match = line.match(/^\s*module\s+([\w.]+)(\s*\(.*\))?\s+where/);
         if (match) {
-          console.log("✅ Module Found:", match[1]);
+          console.log("[debug] Module found:", match[1]);
           return match[1];
         }
       }
-      console.warn("⚠️ No module declaration found in file:", filePath);
+      console.warn("[debug] No module declaration found in file:", filePath);
       return null;
     } catch (error) {
-      console.error("❌ Failed to read file:", error);
+      console.error("[debug] Failed to read file:", error);
       return null;
     }
   }
@@ -274,7 +274,7 @@ export class HaskellDebugSession extends DebugSession {
           )
         );
 
-        // 🔁 Execute the final line (this is where you'd invoke GHCi, run a command, etc.)
+        // Execute the final line via GHCi
         if (this.launchArgs) {
           await this.launchRequest(response, this.launchArgs);
         } else {
@@ -347,7 +347,7 @@ export class HaskellDebugSession extends DebugSession {
           });
           this._currentLine = targetLine;
 
-          // ✅ Extract argument values from the call expression
+          // Extract argument values from the call expression
           const callMatch = rhs.match(new RegExp(`${word}\\s+(.*)`));
           const argValues = callMatch?.[1]?.split(/\s+/) || [];
 
@@ -461,8 +461,8 @@ export class HaskellDebugSession extends DebugSession {
     response.body.supportsConfigurationDoneRequest = true;
     response.body.supportsFunctionBreakpoints = true;
     response.body.supportsRestartRequest = true;
-    (response.body.supportsStepInTargetsRequest = true),
-      (response.body.supportsSetVariable = true);
+    response.body.supportsStepInTargetsRequest = true;
+    response.body.supportsSetVariable = true;
     response.body.supportsRestartFrame = true;
     this.sendResponse(response);
     this.sendEvent(new InitializedEvent());
@@ -522,7 +522,7 @@ export class HaskellDebugSession extends DebugSession {
 
       this._currentFilePath = args.activeFile || "unknown";
 
-      // ✅ Breakpoint fallback logic
+      // Breakpoint fallback logic
       if (!this._breakpoints || this._breakpoints.length === 0) {
         this._currentLine = 1;
         this.sendEvent(new StoppedEvent("entry", 1));

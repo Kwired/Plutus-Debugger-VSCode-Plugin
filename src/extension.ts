@@ -4,16 +4,12 @@ import { startGhcidOnHaskellOpen } from "./diagnostics";
 import { execFile } from "child_process";
 import path from "path";
 import os from "os";
-// import { config_disposal } from "./utils/webview";
 import { simulatePlutus } from "./simulator/simulator";
-// import { openSimulationWebview } from "./ui/simulationWebview";
-// import { PlutusSimulatorView } from "./ui/simulationWebview";
 import { PlutusSimulatorView } from "./ui/simulationWebview";
 
 
 export async function activate(context: vscode.ExtensionContext) {
-  // config_disposal(context);
-  console.log("🔥 Plutus Debugger extension ACTIVATED");
+  console.log("[plutus-debugger] Extension activated");
 
   const surveyCompleted = context.globalState.get<boolean>("plutusDebugger.surveyCompleted");
   if (!surveyCompleted) {
@@ -94,7 +90,7 @@ export async function activate(context: vscode.ExtensionContext) {
       );
     })
   );
-  console.log("📦 Registering PlutusSimulatorView provider");
+  console.log("[plutus-debugger] Registering simulator view");
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
@@ -130,10 +126,7 @@ export function deactivate() {
 }
 
 
-export class InlineDebugAdapterFactory
-
-
-  implements vscode.DebugAdapterDescriptorFactory {
+export class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
   createDebugAdapterDescriptor(
     session: vscode.DebugSession
   ): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
@@ -148,9 +141,7 @@ export class InlineDebugAdapterFactory
 }
 
 
-export class HaskellConfigurationProvider
-
-  implements vscode.DebugConfigurationProvider {
+export class HaskellConfigurationProvider implements vscode.DebugConfigurationProvider {
   resolveDebugConfiguration(
     folder: vscode.WorkspaceFolder | undefined,
     config: vscode.DebugConfiguration,
@@ -238,10 +229,4 @@ export class HaskellConfigurationProvider
     );
   }
 }
-
-
-
-
-
-
 

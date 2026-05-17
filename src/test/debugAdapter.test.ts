@@ -357,8 +357,8 @@ describe("HaskellDebugSession", () => {
         });
     });
 
-    describe("Coverage Boosters", () => {
-        it("should extract words correctly (private method)", () => {
+    describe("Private Method Behavior", () => {
+        it("extractWords should handle strings and parentheses", () => {
             const words = (session as any).extractWords('x = func "str" (nested (p)) arg');
             // based on implementation: filter out ., =, ->
             // matches words outside strings
@@ -366,7 +366,7 @@ describe("HaskellDebugSession", () => {
             expect(words).toContain("arg");
         });
 
-        it("should find function definition line (private method)", () => {
+        it("findFunctionDefinitionLine should locate a named function", () => {
             const mockDoc = {
                 getText: () => "module M where\n\nfunc x = x + 1\n",
                 lineCount: 3
@@ -375,7 +375,7 @@ describe("HaskellDebugSession", () => {
             expect(line).toBe(3);
         });
 
-        it("should handle variablesRequest with module and rich functions", async () => {
+        it("variablesRequest should include module name and function arguments", async () => {
             const response = { body: {} } as any;
             (session as any).launchArgs = { activeFile: "/path/to/Main.hs" };
             (session as any)._currentLine = 10;
@@ -402,7 +402,7 @@ describe("HaskellDebugSession", () => {
             ]));
         });
 
-        it("should handle launchRequest edge cases (no workspace, stderr)", async () => {
+        it("launchRequest should handle missing workspace and stderr output", async () => {
             const response = { body: {} } as any;
             const args = { program: "cabal repl --repl-no-load", activeFile: "test.hs" };
 
@@ -428,7 +428,7 @@ describe("HaskellDebugSession", () => {
             mockProcess.emit("exit", 1);
         });
 
-        it("should handle loadHaskellFile edge cases", async () => {
+        it("loadHaskellFile should handle missing process, wrong extension, and unchanged content", async () => {
             // 1. No process -> return
             (session as any).ghciProcess = undefined;
             await (session as any).loadHaskellFile("test.hs");
@@ -445,7 +445,7 @@ describe("HaskellDebugSession", () => {
             await (session as any).loadHaskellFile("test.hs");
         });
 
-        it("should handle nextRequest with no breakpoints", async () => {
+        it("nextRequest should run to end when breakpoints list is empty", async () => {
             const response = { body: {} } as any;
             (session as any)._breakpoints = [];
             (session as any).launchRequest = jest.fn();
@@ -456,7 +456,7 @@ describe("HaskellDebugSession", () => {
             expect((session as any).launchRequest).toHaveBeenCalled();
         });
 
-        it("should handle nextRequest first step (undefined currentLine)", async () => {
+        it("nextRequest should initialize to first breakpoint when currentLine is undefined", async () => {
             const response = { body: {} } as any;
             (session as any)._breakpoints = [10];
             (session as any)._currentLine = undefined;
@@ -467,8 +467,8 @@ describe("HaskellDebugSession", () => {
         });
     });
 
-    describe("Final Boosters", () => {
-        it("should handle getModuleNameFromFile error", async () => {
+    describe("Error Handling", () => {
+        it("variablesRequest should not crash when file read fails", async () => {
             const response = { body: {} } as any;
             (session as any).launchArgs = { activeFile: "error.hs" };
             (fs.readFile as jest.Mock).mockRejectedValue(new Error("Read fail"));
@@ -479,7 +479,7 @@ describe("HaskellDebugSession", () => {
             expect(vars).toBeDefined();
         });
 
-        it("should handle nextRequest without launchArgs (error path)", async () => {
+        it("nextRequest should send error when launchArgs are missing", async () => {
             const response = { body: {} } as any;
             (session as any)._breakpoints = [];
             (session as any).launchArgs = undefined;
@@ -489,7 +489,7 @@ describe("HaskellDebugSession", () => {
             expect((session as any).sendErrorResponse).toHaveBeenCalled();
         });
 
-        it("should handle stepInRequest edge cases", async () => {
+        it("stepInRequest should handle missing editor and lines without assignment", async () => {
             const response = {} as any;
 
             // 1. No editor
@@ -511,13 +511,13 @@ describe("HaskellDebugSession", () => {
             expect((session as any).nextRequest).toHaveBeenCalled();
         });
 
-        it("should handle stepOutRequest with no editor", async () => {
+        it("stepOutRequest should return early when editor is unavailable", async () => {
             const response = {} as any;
             (vscode.window.activeTextEditor as any) = undefined;
             await (session as any).stepOutRequest(response, {});
             // Should return early
         });
-        it("should handle getModuleNameFromFile with no module declaration", async () => {
+        it("variablesRequest should handle files with no module declaration", async () => {
             const response = { body: {} } as any;
             (session as any).launchArgs = { activeFile: "nomodule.hs" };
             (fs.readFile as jest.Mock).mockResolvedValue("code without module declaration");

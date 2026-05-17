@@ -62,7 +62,7 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
 
     webviewView.webview.onDidReceiveMessage(async (msg) => {
       try {
-        /* ---------------- File Pickers ---------------- */
+        // File pickers
 
         if (msg.type === "pickSocket") {
           const file = await vscode.window.showOpenDialog({ canSelectMany: false });
@@ -97,7 +97,7 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
           }
         }
 
-        /* ---------------- Generate protocol.json ---------------- */
+        // Generate protocol.json from node
 
         if (msg.type === "generateProtocol") {
           if (!socketFile) {
@@ -121,16 +121,18 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
             "protocol.json"
           );
 
-          execFile(
-            "cardano-cli",
-            [
+          const protocolArgs = [
               "query",
               "protocol-parameters",
               "--testnet-magic",
               String(msg.magic),
               "--out-file",
               protocolPath
-            ],
+            ];
+          console.log(`[Plutus Debugger] cardano-cli ${protocolArgs.join(' ')}`);
+          execFile(
+            "cardano-cli",
+            protocolArgs,
             {
               env: {
                 ...process.env,
@@ -159,45 +161,8 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
           );
         }
 
-        /* ---------------- Simulate ---------------- */
 
-        if (msg.type === "simulate") {
-          if (!plutusFile || !protocolFile || !socketFile) {
-            return webviewView.webview.postMessage({
-              type: "simulateError",
-              value: "Missing plutus, protocol, or socket file"
-            });
-          }
-
-          // Save Inputs
-          await this.context.workspaceState.update(STORAGE_KEYS.redeemer, msg.redeemer);
-          await this.context.workspaceState.update(STORAGE_KEYS.datum, msg.datum);
-
-          try {
-            JSON.parse(msg.redeemer);
-            JSON.parse(msg.datum);
-          } catch {
-            return webviewView.webview.postMessage({
-              type: "simulateError",
-              value: "Redeemer or Datum must be valid JSON"
-            });
-          }
-
-          const result = await simulatePlutus({
-            plutusFile,
-            protocolFile,
-            socketPath: socketFile,
-            senderAddress: msg.address,
-            redeemerJson: msg.redeemer,
-            datumJson: msg.datum,
-            testnetMagic: msg.magic ?? 1,
-            assetName: msg.assetName
-          });
-
-          webviewView.webview.postMessage({ type: "result", value: result });
-        }
-
-        /* ---------------- Wallet ---------------- */
+        // --- Wallet ---
 
         if (msg.type === "generateWallet") {
           if (typeof msg.magic !== "number") {
@@ -224,11 +189,13 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
           }
 
           try {
+            console.log(`[Plutus Debugger] generateWallet(name=${walletName}, dir=${keysDir}, magic=${msg.magic})`);
             const keys = await generateWallet(
               walletName,
               keysDir,
               msg.magic
             );
+            console.log(`[Plutus Debugger] Wallet result: address=${keys.address}, exists=${keys.exists}`);
 
             await this.context.workspaceState.update(STORAGE_KEYS.wallet, keys);
 
@@ -253,7 +220,7 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
           }
         }
 
-        /* ---------------- Transaction Operations ---------------- */
+        // --- Transaction Operations ---
 
         if (msg.type === "buildTx") {
           if (!socketFile) {
@@ -267,6 +234,7 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
 
             const txBodyFile = path.join(keysDir, "tx.raw");
 
+            console.log(`[Plutus Debugger] cardano-cli conway transaction build --testnet-magic ${msg.magic} --tx-in ${msg.txIn} --tx-out ${msg.txOut} --change-address ${msg.changeAddress} --out-file ${txBodyFile}`);
             await buildTransaction(
               socketFile!,
               msg.magic,
@@ -275,6 +243,7 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
               msg.changeAddress,
               txBodyFile
             );
+            console.log(`[Plutus Debugger] Build success: ${txBodyFile}`);
 
             webviewView.webview.postMessage({ type: "txBuilt", value: txBodyFile });
           } catch (err: any) {
@@ -291,12 +260,14 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
 
             if (!fs.existsSync(skeyPath)) throw new Error(`Signing key not found for ${msg.walletName}`);
 
+            console.log(`[Plutus Debugger] cardano-cli conway transaction sign --tx-body-file ${msg.txFile} --signing-key-file ${skeyPath} --testnet-magic ${msg.magic} --out-file ${signedFile}`);
             await signTransaction(
               msg.txFile,
               skeyPath,
               signedFile,
               msg.magic
             );
+            console.log(`[Plutus Debugger] Sign success: ${signedFile}`);
 
             webviewView.webview.postMessage({ type: "txSigned", value: signedFile });
           } catch (err: any) {
@@ -309,12 +280,43 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
             return webviewView.webview.postMessage({ type: "txError", value: "Select node.socket first" });
           }
           try {
+            console.log(`[Plutus Debugger] cardano-cli conway transaction submit --tx-file ${msg.txFile} --testnet-magic ${msg.magic}`);
             await submitTransaction(
               msg.txFile,
               socketFile!,
               msg.magic
             );
-            webviewView.webview.postMessage({ type: "txSubmitted", value: "Transaction Submitted Successfully!" });
+            console.log(`[Plutus Debugger] Submit success`);
+            
+            const execFileAsync = require("util").promisify(execFile);
+            let txHash = '';
+            try {
+                console.log(`[Plutus Debugger] cardano-cli conway transaction txid --tx-file ${msg.txFile}`);
+                const { stdout: txidOut } = await execFileAsync('cardano-cli', [
+                    'conway', 'transaction', 'txid', '--tx-file', msg.txFile
+                ], { env: { ...process.env, CARDANO_NODE_SOCKET_PATH: socketFile! } });
+                console.log(`[Plutus Debugger] txid raw output: ${txidOut}`);
+                // Extract 64-char hex hash from output (ignore any JSON wrapper or extra text)
+                const match = txidOut.match(/[0-9a-f]{64}/i);
+                txHash = match ? match[0] : txidOut.trim();
+            } catch (_e) {
+                // txid extraction failed, continue without it
+            }
+            let link = '';
+            if (msg.magic === 1) {
+                link = `https://preprod.cardanoscan.io/transaction/${txHash}`;
+            } else if (msg.magic === 2) {
+                link = `https://preview.cardanoscan.io/transaction/${txHash}`;
+            } else {
+                link = `https://cardanoscan.io/transaction/${txHash}`;
+            }
+
+            webviewView.webview.postMessage({ 
+                type: "txSubmitted", 
+                value: "Transaction Submitted Successfully!", 
+                hash: txHash, 
+                link: link 
+            });
           } catch (err: any) {
             webviewView.webview.postMessage({ type: "txError", value: "Submit Failed: " + (err.message || err) }); // Show full error
           }
@@ -349,6 +351,7 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
             });
           }
 
+          console.log(`[Plutus Debugger] simulatePlutus(plutus=${plutusFile}, protocol=${protocolFile}, socket=${socketFile}, address=${msg.address}, magic=${msg.magic ?? 1}, asset=${msg.assetName})`);
           const result = await simulatePlutus({
             plutusFile,
             protocolFile,
@@ -359,11 +362,12 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
             testnetMagic: msg.magic ?? 1,
             assetName: msg.assetName
           });
+          console.log(`[Plutus Debugger] Simulation result received`);
 
           webviewView.webview.postMessage({ type: "result", value: result });
         }
 
-        /* ---------------- Clear ---------------- */
+        // --- Clear state ---
 
         if (msg.type === "clearState") {
           plutusFile = null;
@@ -375,15 +379,13 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
           await this.context.workspaceState.update(STORAGE_KEYS.socket, undefined);
           await this.context.workspaceState.update(STORAGE_KEYS.address, "");
           await this.context.workspaceState.update(STORAGE_KEYS.redeemer, "{}");
-          await this.context.workspaceState.update(STORAGE_KEYS.address, "");
-          await this.context.workspaceState.update(STORAGE_KEYS.redeemer, "{}");
           await this.context.workspaceState.update(STORAGE_KEYS.datum, "{}");
           await this.context.workspaceState.update(STORAGE_KEYS.wallet, undefined);
 
           webviewView.webview.postMessage({ type: "cleared" });
         }
 
-        /* ---------------- State Persistence ---------------- */
+        // --- State persistence ---
         if (msg.type === "saveTab") {
           await this.context.workspaceState.update(STORAGE_KEYS.activeTab, msg.value);
         }
@@ -407,7 +409,7 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
           webviewView.webview.postMessage({ type: "walletCleared" });
         }
 
-        /* ---------------- New Wallet Features ---------------- */
+        // --- Wallet list / UTxO fetch ---
         if (msg.type === "refreshWallets") {
           const projectRoot = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0].uri.fsPath : this.context.globalStorageUri.fsPath;
           const keysDir = path.join(projectRoot, "keys");
@@ -436,7 +438,7 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
     });
   }
 
-  /* ======================= WEBVIEW HTML ======================= */
+  // --- Webview HTML ---
 
   private getHtml(styleUri: vscode.Uri, state: any): string {
     const activeTab = state.activeTab;
@@ -487,9 +489,10 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
       <select id="network">
         <option value="preprod">Preprod (magic 1)</option>
         <option value="preview">Preview (magic 2)</option>
+        <option value="mainnet">Mainnet (enter magic)</option>
         <option value="custom">Custom</option>
       </select>
-      <input id="customMagic" placeholder="magic" style="display:none"/>
+      <input id="customMagic" placeholder="Enter magic number" style="display:none"/>
     </div>
 
     <button id="generateProtocol" class="primary">Generate protocol.json</button>
@@ -553,6 +556,13 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
           <div id="cpuFill" class="progress-fill low"></div>
       </div>
   </div>
+
+  <div style="margin-top: 20px; border-top: 1px solid var(--vscode-panel-border); padding-top: 10px;">
+      <div class="section-title" title="Highest cost operations identified via cost metrics">Top 3 Costly Operations</div>
+      <div id="heatmapContainer" style="display:none; font-size: 12px; margin-top: 10px;">
+          <!-- JS heatmap rows injected here -->
+      </div>
+  </div>
 </div>
 </div>
 
@@ -608,7 +618,7 @@ export class PlutusSimulatorView implements vscode.WebviewViewProvider {
         <div id="signStatus" class="status" style="display:none"></div>
         
         <button id="submitTx" disabled>Submit Transaction</button>
-        <div id="submitStatus" class="status" style="display:none"></div>
+        <div id="submitStatus" class="status" style="display:none; padding:10px; margin-top:5px; border-radius:4px; font-size:0.9em; word-break:break-all;"></div>
         
         <button id="clearWallet" class="secondary" style="margin-top:10px">Clear All</button>
     </div>
@@ -682,7 +692,7 @@ let hasProtocol = false;
 
 networkSelect.onchange = () => {
   customMagic.style.display =
-    networkSelect.value === "custom" ? "block" : "none";
+    (networkSelect.value === "custom" || networkSelect.value === "mainnet") ? "block" : "none";
 };
 
 document.getElementById("generateProtocol").onclick = () => {
@@ -726,8 +736,15 @@ walletSelect.onchange = () => {
 
 refreshUtxosBtn.onclick = () => {
     const magic = getMagic();
-    if (!magic || !walletAddress.textContent) return;
-    
+    if (!magic) return;
+    if (!walletAddress.textContent) {
+        walletError.style.display = "block";
+        walletError.textContent = "Load a wallet first to fetch UTxOs";
+        return;
+    }
+    walletError.style.display = "none";
+    refreshUtxosBtn.disabled = true;
+    refreshUtxosBtn.textContent = "...";
     vscode.postMessage({
         type: "getUtxos",
         address: walletAddress.textContent,
@@ -850,7 +867,7 @@ function getMagic() {
 
     if (!magic || isNaN(magic)) {
          walletError.style.display = "block";
-         walletError.textContent = "Select a network first";
+         walletError.textContent = "Enter a valid magic number";
          return null;
     }
     return magic;
@@ -944,6 +961,10 @@ window.addEventListener("message", e => {
   if (m.type === "protocolSelected") {
     protocolPath.textContent = m.path;
     hasProtocol = true;
+    protocolStatus.style.display = "block";
+    protocolStatus.className = "status success";
+    protocolStatus.textContent = "protocol.json generated";
+    setTimeout(() => { protocolStatus.style.display = "none"; }, 3000);
     updateSimulateBtn();
   }
 
@@ -985,6 +1006,8 @@ window.addEventListener("message", e => {
   }
 
   if (m.type === "utxosFetched") {
+      refreshUtxosBtn.disabled = false;
+      refreshUtxosBtn.textContent = "↻";
       txInSelect.innerHTML = '<option value="">-- Select UTxO --</option>';
       // Expecting object: { "txHash#Index": { value: ... } }
       const utxos = m.value;
@@ -1045,6 +1068,8 @@ window.addEventListener("message", e => {
   }
 
   if (m.type === "walletError") {
+      refreshUtxosBtn.disabled = false;
+      refreshUtxosBtn.textContent = "↻";
       walletError.style.display = "block";
       walletError.textContent = m.value;
   }
@@ -1098,6 +1123,28 @@ window.addEventListener("message", e => {
         cpuFill.style.width = cpuPct + "%";
         cpuFill.className = "progress-fill " + (cpuPct > 90 ? 'high' : cpuPct > 50 ? 'medium' : 'low');
 
+        // Render Heatmap if data provided
+        if (res.topOperations) {
+            const hC = document.getElementById("heatmapContainer");
+            hC.style.display = "block";
+            hC.innerHTML = res.topOperations.map(op => {
+                const totalPct = (op.cpuPct + op.memPct) / 2;
+                const hClass = totalPct >= 30 ? 'high' : totalPct >= 20 ? 'medium' : 'low';
+                const bgOpacity = totalPct >= 30 ? 'rgba(235, 60, 60, 0.15)' : totalPct >= 20 ? 'rgba(235, 140, 0, 0.15)' : 'rgba(60, 235, 60, 0.1)';
+                const borderColor = totalPct >= 30 ? '#eb3c3c' : totalPct >= 20 ? '#eb8c00' : '#3ceb3c';
+                
+                return '<div style="margin-bottom:8px; padding:8px; border-radius:4px; background:' + bgOpacity + '; border-left:4px solid ' + borderColor + ';">' +
+                       '<div style="display:flex; justify-content:space-between; margin-bottom:4px">' +
+                       '<span><strong><code>' + op.name + '</code></strong></span>' +
+                       '<span style="opacity:0.9; font-weight:bold">' + totalPct.toFixed(1) + '% Heat</span>' +
+                       '</div>' +
+                       '<div class="progress-track" style="height:6px; background:rgba(0,0,0,0.15);">' +
+                       '<div class="progress-fill ' + hClass + '" style="width:' + totalPct + '%"></div>' +
+                       '</div>' +
+                       '</div>';
+            }).join('');
+        }
+
     } catch(e) {
         console.error("Failed to parse gas", e);
     }
@@ -1130,7 +1177,15 @@ window.addEventListener("message", e => {
 
   if (m.type === "txSubmitted") {
     submitStatus.className = "status success";
-    submitStatus.textContent = m.value;
+    submitStatus.style.display = "block";
+    let html = "<strong>" + m.value + "</strong>";
+    if (m.hash) {
+        html += "<br/>Tx Hash: <code>" + m.hash + "</code>";
+    }
+    if (m.link) {
+        html += '<br/><a href="' + m.link + '" target="_blank" style="color:var(--vscode-textLink-foreground);">➔ View on CardanoScan Explorer</a>';
+    }
+    submitStatus.innerHTML = html;
   }
 
   if (m.type === "txError") {
