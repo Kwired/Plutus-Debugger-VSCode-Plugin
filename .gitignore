@@ -33,4 +33,7 @@ tx.raw
 test_output.txt
 verify_tests.sh
 .vscode
-src/debugAdapter.ts.bak
+src/debugAdapter.ts.bak\n# Private Catalyst files\nmilestone-3/\nkeys/
+workshop/
+docs-portal/.venv/
+docs-portal/site/
